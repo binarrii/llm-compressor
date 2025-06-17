@@ -2,15 +2,14 @@ import requests
 import torch
 from datasets import load_dataset
 from PIL import Image
-from transformers import AutoProcessor
+from transformers import AutoProcessor, Idefics3ForConditionalGeneration
 
 from llmcompressor import oneshot
 from llmcompressor.modifiers.quantization import GPTQModifier
-from llmcompressor.transformers.tracing import TraceableIdefics3ForConditionalGeneration
 
 # Load model.
 model_id = "HuggingFaceM4/Idefics3-8B-Llama3"  # or "HuggingFaceTB/SmolVLM-Instruct"
-model = TraceableIdefics3ForConditionalGeneration.from_pretrained(
+model = Idefics3ForConditionalGeneration.from_pretrained(
     model_id, device_map="auto", torch_dtype="auto"
 )
 processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
@@ -116,6 +115,6 @@ print(processor.decode(output[0], skip_special_tokens=True))
 print("==========================================")
 
 # Save to disk compressed.
-SAVE_DIR = model_id.split("/")[1] + "-W4A16-G128"
+SAVE_DIR = model_id.rstrip("/").split("/")[-1] + "-W4A16-G128"
 model.save_pretrained(SAVE_DIR, save_compressed=True)
 processor.save_pretrained(SAVE_DIR)

@@ -4,17 +4,14 @@ from io import BytesIO
 import torch
 from datasets import load_dataset
 from qwen_vl_utils import process_vision_info
-from transformers import AutoProcessor
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
 from llmcompressor.modifiers.quantization import GPTQModifier
 from llmcompressor.transformers import oneshot
-from llmcompressor.transformers.tracing import (
-    TraceableQwen2_5_VLForConditionalGeneration,
-)
 
 # Load model.
 model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
-model = TraceableQwen2_5_VLForConditionalGeneration.from_pretrained(
+model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
     model_id,
     device_map="auto",
     torch_dtype="auto",
@@ -23,7 +20,7 @@ processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
 
 # Oneshot arguments
 DATASET_ID = "lmms-lab/flickr30k"
-DATASET_SPLIT = {"calibration": "test[:512]"}
+DATASET_SPLIT = "test[:512]"
 NUM_CALIBRATION_SAMPLES = 512
 MAX_SEQUENCE_LENGTH = 2048
 
@@ -65,7 +62,7 @@ def preprocess_and_tokenize(example):
     )
 
 
-ds = ds.map(preprocess_and_tokenize, remove_columns=ds["calibration"].column_names)
+ds = ds.map(preprocess_and_tokenize, remove_columns=ds.column_names)
 
 
 # Define a oneshot data collator for multimodal inputs.
@@ -80,7 +77,7 @@ recipe = [
         targets="Linear",
         scheme="W4A16",
         sequential_targets=["Qwen2_5_VLDecoderLayer"],
-        ignore=["lm_head", "re:visual.*"],
+        ignore=["lm_head", "re:visual.*", "re:model.visual.*"],
     ),
 ]
 
@@ -127,6 +124,6 @@ print("==========================================")
 
 
 # Save to disk compressed.
-SAVE_DIR = model_id.split("/")[1] + "-W4A16-G128"
+SAVE_DIR = model_id.rstrip("/").split("/")[-1] + "-W4A16-G128"
 model.save_pretrained(SAVE_DIR, save_compressed=True)
 processor.save_pretrained(SAVE_DIR)

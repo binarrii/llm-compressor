@@ -116,16 +116,15 @@ setup(
         "requests>=2.0.0",
         "tqdm>=4.0.0",
         "torch>=1.7.0",
-        # TODO (#1457) revert to "transformers>4.0,<5.0" after tests pass
-        "transformers>4.0,<4.52.0",
+        "transformers>4.0,<5.0",
         "datasets",
         "accelerate>=0.20.3,!=1.1.0",
         "pynvml",
         "pillow",
         (
-            "compressed-tensors==0.9.4"
+            "compressed-tensors==0.10.1"
             if BUILD_TYPE == "release"
-            else "compressed-tensors>=0.9.5a2"
+            else "compressed-tensors>=0.10.2a2"
         ),
     ],
     extras_require={
@@ -136,11 +135,14 @@ setup(
             "pytest-rerunfailures>=13.0",
             "parameterized",
             "lm_eval==0.4.5",
-            # example test dependencies
+            # test dependencies
             "beautifulsoup4~=4.12.3",
             "cmarkgfm~=2024.1.14",
             "trl>=0.10.1",
-            "pandas",
+            "pandas<2.3.0",
+            "torchvision",
+            "librosa",
+            "soundfile",
             # linting, formatting, and type checking
             "black~=24.4.2",
             "isort~=5.13.2",
