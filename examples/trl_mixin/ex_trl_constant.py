@@ -1,3 +1,7 @@
+# NOTE: Fine tuning can require more steps than is shown in the example
+# See the Axolotl integration blog post for best fine tuning practices
+# https://developers.redhat.com/articles/2025/06/17/axolotl-meets-llm-compressor-fast-sparse-open
+
 from datasets import load_dataset
 from sft_trainer import SFTTrainer
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -7,9 +11,7 @@ from llmcompressor.args import ModelArguments
 
 model_path = "neuralmagic/Llama-2-7b-pruned50-retrained"
 output_dir = "./output_trl_sft_test_7b_gsm8k_sft_data"
-model = AutoModelForCausalLM.from_pretrained(
-    model_path, torch_dtype="auto", device_map="auto"
-)
+model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype="auto")
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -48,6 +50,7 @@ trl_sft_config_args = dict(
 )
 model_args = ModelArguments(model=model)
 
+# This step can be supplanted by fine tuning via integrated FT libraries such as Axolotl
 trainer = SFTTrainer(
     model=model,
     processing_class=tokenizer,

@@ -1,3 +1,9 @@
+# NOTE: Fine tuning can require more steps than is shown in the example
+# See the Axolotl integration blog post for best fine tuning practices
+# https://developers.redhat.com/articles/2025/06/17/axolotl-meets-llm-compressor-fast-sparse-open
+
+from pathlib import Path
+
 import torch
 from loguru import logger
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -6,9 +12,7 @@ from llmcompressor import oneshot, train
 
 # load the model in as bfloat16 to save on memory and compute
 model_stub = "neuralmagic/Llama-2-7b-ultrachat200k"
-model = AutoModelForCausalLM.from_pretrained(
-    model_stub, torch_dtype=torch.bfloat16, device_map="auto"
-)
+model = AutoModelForCausalLM.from_pretrained(model_stub, torch_dtype=torch.bfloat16)
 tokenizer = AutoTokenizer.from_pretrained(model_stub)
 
 # uses LLM Compressor's built-in preprocessing for ultra chat
@@ -19,6 +23,7 @@ recipe = "2of4_w4a16_recipe.yaml"
 
 # save location of quantized model
 output_dir = "output_llama7b_2of4_w4a16_channel"
+output_path = Path(output_dir)
 
 # set dataset config parameters
 splits = {"calibration": "train_gen[:5%]", "train": "train_gen"}
@@ -64,23 +69,27 @@ training_kwargs = dict(
 # ./output_llama7b_2of4_w4a16_channel/ + (finetuning/sparsity/quantization)_stage
 
 # Oneshot sparsification
-oneshot_applied_model = oneshot(
+
+oneshot(
     model=model,
     **oneshot_kwargs,
+    output_dir=output_dir,
     stage="sparsity_stage",
 )
 
 # Sparse finetune
-finetune_applied_model = train(
-    model=oneshot_applied_model,
+# This step can be supplanted by fine tuning via integrated FT libraries such as Axolotl
+train(
+    model=(output_path / "sparsity_stage"),
     **oneshot_kwargs,
     **training_kwargs,
+    output_dir=output_dir,
     stage="finetuning_stage",
 )
 
 # Oneshot quantization
 quantized_model = oneshot(
-    model=finetune_applied_model,
+    model=(output_path / "finetuning_stage"),
     **oneshot_kwargs,
     stage="quantization_stage",
 )
@@ -90,8 +99,8 @@ quantized_model.save_pretrained(
 tokenizer.save_pretrained(f"{output_dir}/quantization_stage")
 
 logger.info(
-    "llmcompressor does not currently support running "
+    "llmcompressor does not currently support running ",
     "compressed models in the marlin24 format. "
-    "The model produced from this example can be "
-    "run on vLLM with dtype=torch.float16."
+    "The model produced from this example can be ",
+    "run on vLLM with dtype=torch.float16.",
 )

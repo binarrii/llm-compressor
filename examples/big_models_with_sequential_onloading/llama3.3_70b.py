@@ -1,29 +1,28 @@
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from llmcompressor import oneshot
 from llmcompressor.modifiers.quantization import GPTQModifier
+from llmcompressor.modifiers.smoothquant import SmoothQuantModifier
+from llmcompressor.transformers import oneshot
+from llmcompressor.utils import dispatch_for_generation
 
-MODEL_ID = "meta-llama/Meta-Llama-3-70B-Instruct"
-SAVE_DIR = MODEL_ID.rstrip("/").split("/")[-1] + "-W8A8-Dynamic"
-
-# 1) Load model (device_map="auto" with shard the model over multiple GPUs!).
+# Select model and load it.
+model_id = "meta-llama/Llama-3.3-70B-Instruct"
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID,
-    device_map="auto",
+    model_id,
     torch_dtype="auto",
-    trust_remote_code=True,
+    device_map=None,
 )
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-# 2) Prepare calibration dataset (in this case, we use ultrachat).
+# Select calibration dataset.
 DATASET_ID = "HuggingFaceH4/ultrachat_200k"
 DATASET_SPLIT = "train_sft"
 
 # Select number of samples. 512 samples is a good place to start.
 # Increasing the number of samples can improve accuracy.
 NUM_CALIBRATION_SAMPLES = 512
-MAX_SEQUENCE_LENGTH = 1024
+MAX_SEQUENCE_LENGTH = 2048
 
 # Load dataset and preprocess.
 ds = load_dataset(DATASET_ID, split=f"{DATASET_SPLIT}[:{NUM_CALIBRATION_SAMPLES}]")
@@ -55,24 +54,34 @@ def tokenize(sample):
 
 ds = ds.map(tokenize, remove_columns=ds.column_names)
 
-# 3) Configure algorithms. In this case, we:
+# Configure the quantization algorithm to run.
+#   * apply SmoothQuant to make the activations easier to quantize
 #   * quantize the weights to int8 with GPTQ (static per channel)
 #   * quantize the activations to int8 (dynamic per token)
 recipe = [
-    GPTQModifier(
-        targets="Linear", scheme="W8A8", ignore=["lm_head"], dampening_frac=0.1
-    ),
+    SmoothQuantModifier(smoothing_strength=0.8),
+    GPTQModifier(targets="Linear", scheme="W8A8", ignore=["lm_head"]),
 ]
-
-# 4) Apply algorithms and save in `compressed-tensors` format.
-# if you encounter GPU out-of-memory issues, consider using an explicit
-# device map (see multi_gpus_int8_device_map.py)
+# Apply algorithms.
 oneshot(
     model=model,
-    tokenizer=tokenizer,
     dataset=ds,
     recipe=recipe,
     max_seq_length=MAX_SEQUENCE_LENGTH,
     num_calibration_samples=NUM_CALIBRATION_SAMPLES,
-    output_dir=SAVE_DIR,
 )
+
+# Confirm generations of the quantized model look sane.
+print("\n\n")
+print("========== SAMPLE GENERATION ==============")
+dispatch_for_generation(model)
+sample = tokenizer("Hello my name is", return_tensors="pt")
+sample = {key: value.to("cuda") for key, value in sample.items()}
+output = model.generate(**sample, max_new_tokens=100)
+print(tokenizer.decode(output[0]))
+print("==========================================\n\n")
+
+# Save to disk compressed.
+SAVE_DIR = model_id.rstrip("/").split("/")[-1] + "-W8A8"
+model.save_pretrained(SAVE_DIR, save_compressed=True)
+tokenizer.save_pretrained(SAVE_DIR)
